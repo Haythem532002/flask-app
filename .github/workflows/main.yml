@@ -16,5 +16,5 @@ jobs:
         run: docker build -t myapp:latest .
       - name: Tag and push docker Image
         run: |
-          docker tag myapp:latest haythem22/myapp:v1.3
+          docker tag myapp:latest haythem22/myapp:v1.4
           docker push haythem22/myapp:v1.3
