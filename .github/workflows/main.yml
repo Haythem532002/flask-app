@@ -1,0 +1,20 @@
+name: Pipeline for GitOps Project
+
+on:
+  push: 
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4 
+      - name: Login to Docker
+        run: echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ env.DOCKER_USERNAME }} --password-stdin 
+      - name: Build Docker Image
+        run: docker build -t myapp:latest .
+      - name: Tag and push docker Image
+        run: |
+          docker tag myapp:latest haythem22/myapp:v1.2
+          docker push haythem22/myapp:v1.2
