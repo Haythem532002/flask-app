@@ -10,7 +10,7 @@ Short summary:
 
 - The application is a simple Flask web app (this repo).
 - The infrastructure manifests (Kubernetes Deployment/Service, Kustomize overlays) live in a separate repository (manifests repo).
-- CI is implemented with GitHub Actions: it builds the Docker image (multi-stage Dockerfile), tags and pushes it to Docker Hub.
+- CI is implemented with GitHub Actions: it builds the Docker image (single-stage Dockerfile), tags and pushes it to Docker Hub.
 - ArgoCD is installed in the target Kubernetes cluster and pointed at the manifests repo. ArgoCD Image Updater watches Docker Hub tags and updates the image tag in the manifests repo when a new image is pushed by CI, causing ArgoCD to sync and deploy the new version.
 
 Key outcomes:
@@ -22,7 +22,7 @@ Key outcomes:
 
 - I split the work across two repositories: one for the app (this repo) and one for Kubernetes manifests.
 - Implemented CI using GitHub Actions in the app repo to build and push Docker images.
-- Created a multi-stage `Dockerfile` to produce a small production image for the Flask app.
+- Created a `Dockerfile` (single-stage) to produce a production image for the Flask app.
 - In the manifests repo I added Kustomize overlays containing a `Deployment` and `Service` for the app.
 - Deployed ArgoCD in the cluster and created an `Application` that points to the manifests repo.
 - Installed and configured ArgoCD Image Updater to monitor Docker Hub for new tags and automatically update the manifests repo (or perform image updates) so ArgoCD can pick them up and deploy.
@@ -42,18 +42,20 @@ App / environment screenshots (from `imgs/`):
 ## How it works (end-to-end)
 
 1. Developer pushes code to the app repository (this repo).
-2. GitHub Actions workflow runs: builds the Docker image (multi-stage), tags it (e.g. `owner/app:sha-<short>`), and pushes to Docker Hub.
+2. GitHub Actions workflow runs: builds the Docker image, tags it (e.g. `owner/app:sha-<short>`), and pushes to Docker Hub.
 3. ArgoCD Image Updater watches Docker Hub for new tags for the image referenced in the manifests repo.
 4. When a new tag appears, Image Updater updates the image reference in the manifests repository (or triggers an automated update depending on configuration).
 5. ArgoCD detects the change in the manifests repo and performs a sync to the Kubernetes cluster, updating the `Deployment` with the new image tag.
 6. The updated pods roll out the new Docker image automatically.
 
-## Dockerfile (multi-stage) — summary
+## Dockerfile — summary
 
-Typical multi-stage Dockerfile used for small Python/Flask apps:
+This repository uses a single-stage `Dockerfile`. Typical contents for a small Python/Flask app Dockerfile:
 
-- Builder stage: install build dependencies and create a wheel or install packages into a clean directory.
-- Final stage: copy only the runtime artifacts (app code, installed site-packages) and run `gunicorn` (or `flask run` for development).
+- Use a slim Python base image (for example `python:3.11-slim`).
+- Copy the application source and `requirements.txt` into the image.
+- Install dependencies (via `pip install -r requirements.txt`).
+- Expose the application port and run a production server (e.g., `gunicorn`) or the Flask dev server for local testing.
 
 Example (already present in this repo): see `Dockerfile`.
 
@@ -115,7 +117,7 @@ docker push your-dockerhub-username/flask-app:latest
 
 ## GitHub Actions (CI) — notes
 
-- The CI workflow builds the multi-stage Docker image, runs tests (if any), and pushes the image to Docker Hub.
+- The CI workflow builds the Docker image, runs tests (if any), and pushes the image to Docker Hub.
 - Configure secrets in GitHub: `DOCKERHUB_USERNAME`, `DOCKERHUB_PASSWORD` (or use a GitHub Package Registry token), and any other secrets required for the workflow.
 
 Example high-level steps in CI:
@@ -132,7 +134,7 @@ Example high-level steps in CI:
 ```
 ./
 ├─ app.py                 # Flask application
-├─ Dockerfile             # Multi-stage Dockerfile (build + runtime)
+├─ Dockerfile             # Dockerfile (build + runtime)
 ├─ requirements.txt       # Python dependencies
 ├─ templates/             # Flask HTML templates
 ├─ static/                # Static assets (CSS, JS)
