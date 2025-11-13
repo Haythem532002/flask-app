@@ -2,15 +2,13 @@
 
 This repository contains a small Flask application along with a pipeline and Kubernetes deployment workflow that demonstrates GitOps with GitHub Actions, a separate manifests repository using Kustomize, and an ArgoCD application configured with ArgoCD Image Updater.
 
-Badges: (optional - add your CI / Docker Hub badges here)
-
 ## Overview
 
 Short summary:
 
 - The application is a simple Flask web app (this repo).
 - The infrastructure manifests (Kubernetes Deployment/Service, Kustomize overlays) live in a separate repository (manifests repo).
-- CI is implemented with GitHub Actions: it builds the Docker image (single-stage Dockerfile), tags and pushes it to Docker Hub.
+- CI is implemented with GitHub Actions: it builds the Docker image , tags and pushes it to Docker Hub.
 - ArgoCD is installed in the target Kubernetes cluster and pointed at the manifests repo. ArgoCD Image Updater watches Docker Hub tags and updates the image tag in the manifests repo when a new image is pushed by CI, causing ArgoCD to sync and deploy the new version.
 
 Key outcomes:
