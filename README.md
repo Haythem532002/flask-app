@@ -1,337 +1,187 @@
-# Complete CI/CD DevOps Project 🚀
-### Deploy Python Flask App on Kubernetes cluster with GitOps Approach. 
+# Flask App (GitHub Actions + ArgoCD)
 
-![alt text](imgs/arch.png)
+This repository contains a small Flask application along with a pipeline and Kubernetes deployment workflow that demonstrates GitOps with GitHub Actions, a separate manifests repository using Kustomize, and an ArgoCD application configured with ArgoCD Image Updater.
 
----
-### Workflow:
-Whenever Developer writing/changes a code and push into master/main branch, GitHub Pipeline will triggered and it will test the code with Flake8 and containerized the application with new tag and push into artifacts(dockerhub) and also GitHub Actions pipeline will update Kubernetes Manifests file with new image tag then ArgoCD will look for new changes in Manifests file and will rollout new application in kubernetes. 
+Badges: (optional - add your CI / Docker Hub badges here)
+
+## Overview
+
+Short summary:
+
+- The application is a simple Flask web app (this repo).
+- The infrastructure manifests (Kubernetes Deployment/Service, Kustomize overlays) live in a separate repository (manifests repo).
+- CI is implemented with GitHub Actions: it builds the Docker image (multi-stage Dockerfile), tags and pushes it to Docker Hub.
+- ArgoCD is installed in the target Kubernetes cluster and pointed at the manifests repo. ArgoCD Image Updater watches Docker Hub tags and updates the image tag in the manifests repo when a new image is pushed by CI, causing ArgoCD to sync and deploy the new version.
+
+Key outcomes:
+
+- Fully automated build → push → deploy flow.
+- Clear separation between application code (this repo) and deployment manifests (manifests repo).
+
+## Project status / what I did
+
+- I split the work across two repositories: one for the app (this repo) and one for Kubernetes manifests.
+- Implemented CI using GitHub Actions in the app repo to build and push Docker images.
+- Created a multi-stage `Dockerfile` to produce a small production image for the Flask app.
+- In the manifests repo I added Kustomize overlays containing a `Deployment` and `Service` for the app.
+- Deployed ArgoCD in the cluster and created an `Application` that points to the manifests repo.
+- Installed and configured ArgoCD Image Updater to monitor Docker Hub for new tags and automatically update the manifests repo (or perform image updates) so ArgoCD can pick them up and deploy.
+
+## Architecture diagram
+
+![Architecture diagram](./imgs/diagram.png)
+
+## Images / screenshots
+
+App / environment screenshots (from `imgs/`):
+
+![screenshot1](./imgs/1.png)
+![screenshot2](./imgs/2.png)
+![screenshot3](./imgs/3.png)
+
+## How it works (end-to-end)
+
+1. Developer pushes code to the app repository (this repo).
+2. GitHub Actions workflow runs: builds the Docker image (multi-stage), tags it (e.g. `owner/app:sha-<short>`), and pushes to Docker Hub.
+3. ArgoCD Image Updater watches Docker Hub for new tags for the image referenced in the manifests repo.
+4. When a new tag appears, Image Updater updates the image reference in the manifests repository (or triggers an automated update depending on configuration).
+5. ArgoCD detects the change in the manifests repo and performs a sync to the Kubernetes cluster, updating the `Deployment` with the new image tag.
+6. The updated pods roll out the new Docker image automatically.
+
+## Dockerfile (multi-stage) — summary
+
+Typical multi-stage Dockerfile used for small Python/Flask apps:
+
+- Builder stage: install build dependencies and create a wheel or install packages into a clean directory.
+- Final stage: copy only the runtime artifacts (app code, installed site-packages) and run `gunicorn` (or `flask run` for development).
+
+Example (already present in this repo): see `Dockerfile`.
+
+## Kubernetes manifests (manifests repo)
+
+- The manifests repo contains a Kustomize base with a `Deployment` and a `Service` for this app.
+- Overlays are used per-environment (e.g., `overlays/staging`, `overlays/production`).
+- The `Deployment` references the Docker image in Docker Hub (e.g., `dockerhub-user/flask-app:<tag>`).
+
+Kustomize makes it easy to patch the image tag via the `images` field in `kustomization.yaml` so Image Updater (or manual processes) can update only the tag.
+
+## ArgoCD and Image Updater
+
+- ArgoCD watches the manifests repo and reconciles resources in the cluster to match the repo.
+- ArgoCD Image Updater can be configured in one of two primary modes:
+  - Update the manifests repo directly (commit new image tags to the repo).
+  - Use ArgoCD's live image update features to patch the Application resource.
+- In this setup Image Updater is configured to detect new Docker Hub tags and update the manifest (or notify ArgoCD) so the deployment happens automatically.
+
+## How to run locally (dev)
+
+On Windows (PowerShell):
+
+1. Create and activate a virtual environment
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
-│   app.py
-│   LICENSE
-│   README.md
-│   requirements.txt
-│
-├───deploy
-│       deploy.yaml
-│       svc.yaml
-│
-├───static
-│       style.css
-│
-└───templates
-        index.html
+
+2. Install dependencies
+
+```powershell
+pip install -r requirements.txt
 ```
----
-#### What you will learn:
-- Git for version control
-- VS Code Editor
-- Docker for testing locally
-- Minikube for Kubernetes 1 Node Arch. 
-- GitHub for storing code
-- GitHub Actions for Continous Integrity Pipeline 
-- ArgoCD for Continous Deployment Pipeline
-- Python Application
-    - Flask Framework
-    - Flake8 Module for Linting testing  
----
-## Test Application Locally. 
-Whenever we are creating pipeline, it is best practice to test application locally.
-- Application prequisities. 
-  - Python 3.9 
-  - pip installed
 
-- Clone/Fork the Repo. 
-    ```
-    git clone https://github.com/infosecsingh/Flask-App-GitHub-Actions-ArgoCD.git
-    cd Flask-App-GitHub-Actions-ArgoCD
-    ```
-- Install Dependence
-    ```
-    pip install -r requirements.txt
-    ```
-- Run locally. 
-    ```
-    python app.py
-    ```
-- Access the application.
-    ```
-    http://localhost:5000
-    ```
+3. Run the app
 
-Note: This application is running on 5000 port, but if you want to change, you can change the port in app.py script.
-
----
-## Containerized Application.
-Before creating pipeline, test locally if your dockerfile is accurate by running container. 
-We will create Dockerfile. If you don't know what is docker, please read some basic understanding about docker: https://github.com/infosecsingh/Learn-Docker
-
-Write Dockerfile
+```powershell
+set-Content -Path .env -Value "FLASK_APP=app.py"
+python -m flask run --host=0.0.0.0 --port=5000
 ```
-# Step 1: Base image
-FROM python:3.9-slim
 
-# Step 2: Set working directory
-WORKDIR /app
+Open http://localhost:5000 in your browser.
 
-# Step 3: Copy application code to the container
-COPY . .
+To build the Docker image and run it locally:
 
-# Step 4: Install dependencies
-RUN pip install -r requirements.txt
-
-# Step 5: Expose the application port
-EXPOSE 5000
-
-# Step 6: Define the command to run the application
-CMD ["python", "app.py"]
+```powershell
+docker build -t your-dockerhub-username/flask-app:dev .
+docker run -p 5000:5000 your-dockerhub-username/flask-app:dev
 ```
-#### Lets Build and Run the Container
-1. Build the Image: Run the following in the directory containing your Dockerfile:
+
+To push to Docker Hub (CI does this automatically in the repo):
+
+```powershell
+docker tag your-dockerhub-username/flask-app:dev your-dockerhub-username/flask-app:latest
+docker push your-dockerhub-username/flask-app:latest
 ```
-docker build -t 1nfosecsingh/demo-app:v1 .
+
+## GitHub Actions (CI) — notes
+
+- The CI workflow builds the multi-stage Docker image, runs tests (if any), and pushes the image to Docker Hub.
+- Configure secrets in GitHub: `DOCKERHUB_USERNAME`, `DOCKERHUB_PASSWORD` (or use a GitHub Package Registry token), and any other secrets required for the workflow.
+
+Example high-level steps in CI:
+
+1. Checkout
+2. Set up Python
+3. Build Docker image
+4. Log in to Docker Hub
+5. Push image
+6. (Optional) Create and push a tag like `sha-<short>`
+
+## Repo structure (this app)
+
 ```
-Note: you need to change the name of your image, according to your dockerhub username.
+./
+├─ app.py                 # Flask application
+├─ Dockerfile             # Multi-stage Dockerfile (build + runtime)
+├─ requirements.txt       # Python dependencies
+├─ templates/             # Flask HTML templates
+├─ static/                # Static assets (CSS, JS)
+├─ imgs/                  # Project images and screenshots (used by this README)
+│  ├─ diagram.png
+│  ├─ 1.png
+│  ├─ 2.png
+│  └─ 3.png
+├─ README.md              # This file
+```
 
-2. Lets create container with image.
- ```
- docker run -d -p 5000:5000 --name=demo-app demo-app
- ```
+## Where the manifests live
 
- If everything is working fine and you are able to access application with https://localhost:5000 then next step is to write a GitHub Pipeline.
+- Manifests (Kustomize overlays) are kept in a separate repository. That repository is the source ArgoCD watches.
 
-## CI Pipeline with GitHub Actions
-1. Create a directory inside your project.
-    ```
-    mkdir -p .github/Workflows
-    ```
-2. Create your first pipeline for TEST and BUILD the image. make sure it should be yaml file
-    ```
-    name: Test and Build
+Suggested `kustomization.yaml` snippet to allow Image Updater to patch the image tag:
 
-    on:
-    push:
-        branches:
-        - master
-        paths:
-        - '**/*'
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
+images:
+  - name: dockerhub-user/flask-app
+    newTag: "REPLACE_WITH_TAG"
+```
 
-    jobs:
-    build:
-        runs-on: ubuntu-latest
+## Tips and next steps
 
-        steps:
-        #Setting up environment
-        - name: Checkout code
-            uses: actions/checkout@v2
+- Add CI tests to validate the app before pushing images.
+- Configure GitHub Actions to create image tags with the commit SHA for traceability.
+- Tighten ArgoCD Image Updater rules (semver, regex) to control when updates are applied.
+- Set up health checks and readiness probes in the `Deployment` for safer rollouts.
 
-        - name: Setup Python
-            uses: actions/setup-python@v2
-            with:
-            python-version: '3.9'
+## Files changed
 
-        - name: Docker Setup
-            uses: docker/setup-buildx-action@v2
+- Replaced README content to match this Flask app + GitOps workflow and included images from `imgs/`.
 
-        - name: Install dependencies
-            run: |
-            python -m pip install --upgrade pip
-            pip install -r requirements.txt
-            pip install flake8
-            
-        # Test the Code
-        - name: Run Linting tests
-            run: |
-            flake8 --ignore=E501,F401 .
-        
-        - name: Docker Credentials
-            uses: docker/login-action@v2
-            with:
-            username: ${{ secrets.DOCKER_USERNAME }}
-            password: ${{ secrets.DOCKER_PASSWORD }}
-        
-        - name: Docker tag
-            id: version
-            run: |
-            VERSION=v$(date +"%Y%m%d%H%M%S")
-            echo "VERSION=$VERSION" >> $GITHUB_ENV
+## Verification
 
-        # Build the Docker Image
-        - name: Build Docker Image
-            run: |
-            docker build . -t 1nfosecsingh/demo-app:${{ env.VERSION }} 
-        
-        # Push the Docker Image
-        - name: Push Docker Image
-            run: |
-            docker push 1nfosecsingh/demo-app:${{ env.VERSION }}
-        
-        # UPdate the K8s Manifest Files
-        - name: Update K8s Manifests
-            run: |
-            cat deploy/deploy.yaml
-            sed -i "s|image: 1nfosecsingh/demo-app:.*|image: 1nfosecsingh/demo-app:${{ env.VERSION }}|g" deploy/deploy.yaml
-            cat deploy/deploy.yaml
-
-        # Update Github
-        - name: Commit the changes
-            run: |
-            git config --global user.email "<infosecsingh@gmail.com>"
-            git config --global user.name "GitHub Actions Bot"
-            git add deploy/deploy.yaml
-            git commit -m "Update deploy.yaml with new image version - ${{ env.VERSION }}"
-            git remote set-url origin https://github-actions:${{ secrets.GITHUB_TOKEN }}@github.com/infosecsingh/Flask-App-GitHub-Actions-ArgoCD.git
-            git push origin master
-    ```
-
-1. Make sure setup your docker Personal Access token into github repo. 
-
-## Setup ArgoCD in Minikube
-
-Note: You can setup Argo CD in any cluster, instructions are same. 
-
-- First install Minikube:
-    Installation guide for installing Minikube. 
-    [Minikube.sigs.k8s.io](https://minikube.sigs.k8s.io/docs/start/?arch=%2Fwindows%2Fx86-64%2Fstable%2F.exe+download)
+- This README references images found under `imgs/` in this repository. If you add or rename images, update the paths above.
 
 ---
-- Install Argo CD
-    ```
-    kubectl create namespace argocd
-    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml 
-    ```
 
-- Verify if ArgoCD is running:
-    ```
-    kubectl get all -n argocd
-    ```
-    Output
-    ```    
-        NAME                                                    READY   STATUS    RESTARTS       AGE
-    pod/argocd-application-controller-0                     1/1     Running   0              2m57s
-    pod/argocd-applicationset-controller-64f6bd6456-6jv2z   1/1     Running   0              2m57s
-    pod/argocd-dex-server-5fdcd9df8b-6ctpr                  1/1     Running   1 (2m2s ago)   2m57s
-    pod/argocd-notifications-controller-778495d96f-rhj9k    1/1     Running   0              2m57s
-    pod/argocd-redis-69fd8bd669-5cwkf                       1/1     Running   0              2m57s
-    pod/argocd-repo-server-75567c944-mth62                  1/1     Running   0              2m57s
-    pod/argocd-server-5c768cdd96-6rpdp                      1/1     Running   0              2m57s
+If you'd like, I can also:
 
-    NAME                                              TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)                      AGE
-    service/argocd-applicationset-controller          ClusterIP   10.96.214.139    <none>        7000/TCP,8080/TCP            2m57s
-    service/argocd-dex-server                         ClusterIP   10.105.242.131   <none>        5556/TCP,5557/TCP,5558/TCP   2m57s
-    service/argocd-metrics                            ClusterIP   10.108.182.252   <none>        8082/TCP                     2m57s
-    service/argocd-notifications-controller-metrics   ClusterIP   10.106.4.82      <none>        9001/TCP                     2m57s
-    service/argocd-redis                              ClusterIP   10.98.222.183    <none>        6379/TCP                     2m57s
-    service/argocd-repo-server                        ClusterIP   10.103.237.141   <none>        8081/TCP,8084/TCP            2m57s
-    service/argocd-server                             ClusterIP   10.107.245.182   <none>        80/TCP,443/TCP               2m57s
-    service/argocd-server-metrics                     ClusterIP   10.108.248.213   <none>        8083/TCP                     2m57s
+- Add a small health-check and readiness probe to the Kubernetes deployment.
+- Add a sample GitHub Actions workflow file (if not present) that shows the exact steps I described.
+- Create a short kustomize base and overlay example in this repo for testing with a local Kubernetes cluster.
 
-    NAME                                               READY   UP-TO-DATE   AVAILABLE   AGE
-    deployment.apps/argocd-applicationset-controller   1/1     1            1           2m57s
-    deployment.apps/argocd-dex-server                  1/1     1            1           2m57s
-    deployment.apps/argocd-notifications-controller    1/1     1            1           2m57s
-    deployment.apps/argocd-redis                       1/1     1            1           2m57s
-    deployment.apps/argocd-repo-server                 1/1     1            1           2m57s
-    deployment.apps/argocd-server                      1/1     1            1           2m57s
-
-    NAME                                                          DESIRED   CURRENT   READY   AGE
-    replicaset.apps/argocd-applicationset-controller-64f6bd6456   1         1         1       2m57s
-    replicaset.apps/argocd-dex-server-5fdcd9df8b                  1         1         1       2m57s
-    replicaset.apps/argocd-notifications-controller-778495d96f    1         1         1       2m57s
-    replicaset.apps/argocd-redis-69fd8bd669                       1         1         1       2m57s
-    replicaset.apps/argocd-repo-server-75567c944                  1         1         1       2m57s
-    replicaset.apps/argocd-server-5c768cdd96                      1         1         1       2m57s
-
-    NAME                                             READY   AGE
-    statefulset.apps/argocd-application-controller   1/1     2m57s
-    ```
-
----
-- Access ArgoCD With configuring NodePort 
-    ```
-    kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "NodePort"}}'
-    ```
-- Verify if ArgoCD server running as NodePort.
-   ```
-   kubectl get svc -n argocd
-   ``` 
-   Output
-   ```
-   NAME                                      TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)                      AGE
-    argocd-applicationset-controller          ClusterIP   10.96.214.139    <none>        7000/TCP,8080/TCP            7m17s
-    argocd-dex-server                         ClusterIP   10.105.242.131   <none>        5556/TCP,5557/TCP,5558/TCP   7m17s
-    argocd-metrics                            ClusterIP   10.108.182.252   <none>        8082/TCP                     7m17s
-    argocd-notifications-controller-metrics   ClusterIP   10.106.4.82      <none>        9001/TCP                     7m17s
-    argocd-redis                              ClusterIP   10.98.222.183    <none>        6379/TCP                     7m17s
-    argocd-repo-server                        ClusterIP   10.103.237.141   <none>        8081/TCP,8084/TCP            7m17s
-    argocd-server                             NodePort    10.107.245.182   <none>        80:30692/TCP,443:31365/TCP   7m17s
-    argocd-server-metrics                     ClusterIP   10.108.248.213   <none>        8083/TCP                     7m17s
-   ```
-- Grab ArgoCD secret for accessing UI
-   ```
-   kubectl get secrets -n argocd argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
-   ```
-
-- Start Minkube Service. 
-   ```
-    minikube service argocd-server -n argocd
-    ```
-    Output
-    ```
-    |-----------|---------------|-------------|-----------------------------|
-    | NAMESPACE |     NAME      | TARGET PORT |             URL             |
-    |-----------|---------------|-------------|-----------------------------|
-    | argocd    | argocd-server | http/80     | http://172.29.213.129:30692 |
-    |           |               | https/443   | http://172.29.213.129:31365 |
-    |-----------|---------------|-------------|-----------------------------|
-    [argocd argocd-server http/80
-    https/443 http://172.29.213.129:30692
-    http://172.29.213.129:31365]
-
-   ```
-   Username: admin
-   password: secret(please check above command)
-
-   ![alt text](imgs/ui.png)
-
----
-Setup our Continous deployment. 
-
-- Select New App.
-![alt text](imgs/setting1.png)
-![alt text](imgs/setting2.png)
----
-- Syncing your manifests files:
-![alt text](imgs/sync.png)
----
-
-- Successfully Deployed our app:
-![alt text](imgs/deployed.png)
----
-Access Application with below command.
-```
-minikube service list
-```
-Output
-```
-|-------------|-----------------------------------------|--------------|-----------------------------|
-|  NAMESPACE  |                  NAME                   | TARGET PORT  |             URL             |
-|-------------|-----------------------------------------|--------------|-----------------------------|
-| argocd      | argocd-applicationset-controller        | No node port |                             |
-| argocd      | argocd-dex-server                       | No node port |                             |
-| argocd      | argocd-metrics                          | No node port |                             |
-| argocd      | argocd-notifications-controller-metrics | No node port |                             |
-| argocd      | argocd-redis                            | No node port |                             |
-| argocd      | argocd-repo-server                      | No node port |                             |
-| argocd      | argocd-server                           | http/80      | http://172.29.213.129:30692 |
-|             |                                         | https/443    | http://172.29.213.129:31365 |
-| argocd      | argocd-server-metrics                   | No node port |                             |
-| default     | kubernetes                              | No node port |                             |
-| default     | weather-check-service                   |         5000 | http://172.29.213.129:30008 |
-| kube-system | kube-dns                                | No node port |                             |
-|-------------|-----------------------------------------|--------------|-----------------------------|
-```
----
-Application running on http://172.29.213.129:30008
-
-![alt text](imgs/application.png)
+Tell me which of those you'd like next and I will implement it.
